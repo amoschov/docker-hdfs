@@ -1,27 +1,30 @@
-FROM java:7
-MAINTAINER mdouchement
+FROM mlaccetti/docker-oracle-java8-ubuntu-16.04
+MAINTAINER amoshcov
 
 ENV DEBIAN_FRONTEND noninteractive
 
-# Refresh package lists
-RUN apt-get update
-RUN apt-get -qy dist-upgrade
+ARG HADOOP_VERSION=2.7.2
+LABEL Description="Hadoop Dev", "Hadoop Version"="$HADOOP_VERSION"
 
-RUN apt-get install -qy rsync curl openssh-server openssh-client vim nfs-common
+# Refresh package lists
+RUN apt-get update && apt-get install -y --no-install-recommends apt-utils
+RUN apt-get -y upgrade
+RUN apt-get install -qy rsync curl openssh-server openssh-client vim nfs-common net-tools less vim mc
 
 RUN mkdir -p /data/hdfs-nfs/
 RUN mkdir -p /opt
 WORKDIR /opt
 
 # Install Hadoop
-RUN curl -L http://apache.crihan.fr/dist/hadoop/common/hadoop-2.7.2/hadoop-2.7.2.tar.gz -s -o - | tar -xzf -
-RUN mv hadoop-2.7.2 hadoop
+
+RUN curl -L http://archive.apache.org/dist/hadoop/common/hadoop-$HADOOP_VERSION/hadoop-$HADOOP_VERSION.tar.gz -s -o - | tar -xzf -
+RUN mv hadoop-$HADOOP_VERSION hadoop
 
 # Setup
 WORKDIR /opt/hadoop
 ENV PATH /opt/hadoop/bin:/opt/hadoop/sbin:$PATH
-ENV JAVA_HOME /usr/lib/jvm/java-7-openjdk-amd64
-RUN sed --in-place='.ori' -e "s/\${JAVA_HOME}/\/usr\/lib\/jvm\/java-7-openjdk-amd64/" etc/hadoop/hadoop-env.sh
+ENV JAVA_HOME /usr/lib/jvm/java-8-oracle
+RUN sed --in-place='.ori' -e "s/\${JAVA_HOME}/\/usr\/lib\/jvm\/java-8-oracle/" etc/hadoop/hadoop-env.sh
 
 # Configure ssh client
 RUN ssh-keygen -t dsa -P '' -f ~/.ssh/id_dsa && \
@@ -32,18 +35,18 @@ RUN echo "\nHost *\n" >> ~/.ssh/config && \
     echo "   StrictHostKeyChecking no\n" >> ~/.ssh/config && \
     echo "   UserKnownHostsFile=/dev/null\n" >> ~/.ssh/config
 
+
 # Disable sshd authentication
 RUN echo "root:root" | chpasswd
-RUN sed -i 's/PermitRootLogin without-password/PermitRootLogin yes/' /etc/ssh/sshd_config
-# SSH login fix. Otherwise user is kicked off after login
-RUN sed 's@session\s*required\s*pam_loginuid.so@session optional pam_loginuid.so@g' -i /etc/pam.d/sshd
-# => Quick fix for enabling datanode connections
-#    ssh -L 50010:localhost:50010 root@192.168.99.100 -p 22022 -o PreferredAuthentications=password
+RUN sed -i 's/PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
 
 # Pseudo-Distributed Operation
 COPY etc/hadoop/core-site.xml etc/hadoop/core-site.xml
 COPY etc/hadoop/hdfs-site.xml etc/hadoop/hdfs-site.xml
 RUN hdfs namenode -format
+
+ADD entrypoint.sh /entrypoint.sh
+RUN chmod 700 /entrypoint.sh
 
 # SSH
 EXPOSE 22
@@ -58,8 +61,4 @@ EXPOSE 50075
 # HDFS secondary namenode
 EXPOSE 50090
 
-CMD service ssh start \
-  && start-dfs.sh \
-  && hadoop-daemon.sh start portmap \
-  && hadoop-daemon.sh start nfs3 \
-  && bash
+CMD ["/entrypoint.sh", "-d"]
