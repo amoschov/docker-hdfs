@@ -3,7 +3,7 @@ MAINTAINER amoshcov
 
 ENV DEBIAN_FRONTEND noninteractive
 
-ARG HADOOP_VERSION=2.7.2
+ARG HADOOP_VERSION=2.9.0
 LABEL Description="Hadoop Dev", "Hadoop Version"="$HADOOP_VERSION"
 
 # Refresh package lists
